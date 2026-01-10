@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube ChatBot (RAG)",
+  "description": "Ask questions about the current YouTube video using AI",
+  "version": "1.0",
+
+  "permissions": ["activeTab"],
+
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "http://localhost:8000/*"
+  ],
+
+  "action": {
+    "default_popup": "popup.html"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+}

@@ -29,7 +29,7 @@ def extract_video_id(youtube_url: str) -> str:
 
 
 # 1. Fetch YouTube transcript
-youtube_url = "https://www.youtube.com/watch?v=8d5qCTE6jQY&list=PL8qRqB6F6d9ZkOhrZTbvS6tCk8MeEbyCe&index=13"
+youtube_url = "https://www.youtube.com/watch?v=ay37uluXwhI&list=PL8qRqB6F6d9ZkOhrZTbvS6tCk8MeEbyCe&index=20"
 
 video_id = extract_video_id(youtube_url)
 
@@ -134,7 +134,7 @@ Question:
 
 
 # 9. Ask questions
-question = "In this podcast what is discussed about mahabharata?"
+question = "In this podcast Write about spirituality?"
 
 docs = retriever.invoke(question)
 context_text = "\n\n".join(doc.page_content for doc in docs)
