@@ -4,10 +4,13 @@ const sendBtn = document.getElementById("sendBtn");
 const closeBtn = document.getElementById("closeBtn");
 const themeToggle = document.getElementById("themeToggle");
 const infoMessage = document.getElementById("info-message");
+const summaryBtn = document.getElementById("summaryBtn");
+
 
 let currentYoutubeUrl = null;
 let chatHistory = [];
 let isThinking = false;
+
 
 // Theme management
 function initTheme() {
@@ -29,6 +32,8 @@ closeBtn.addEventListener("click", () => {
   window.close();
 });
 
+
+
 // Detect active tab URL
 chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
   const url = tabs[0].url || "";
@@ -44,11 +49,12 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     { type: "GET_YOUTUBE_URL" },
     (response) => {
       if (response && response.url) {
-        currentYoutubeUrl = response.url;
-        chatHistory = [];
-        renderChat();
-        infoMessage.textContent = "";
+          currentYoutubeUrl = response.url;
+          chatHistory = [];
+          renderChat();
+          infoMessage.textContent = "";
       }
+
     }
   );
 });
@@ -56,6 +62,7 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
 function disableInput() {
   questionInput.disabled = true;
   sendBtn.disabled = true;
+  summaryBtn.disabled = true;
 }
 
 // Hide empty state when chat has messages
@@ -92,6 +99,7 @@ function renderChat() {
 
   updateEmptyState();
   chatContainer.scrollTop = chatContainer.scrollHeight;
+
 }
 
 // Send message
@@ -103,6 +111,7 @@ sendBtn.addEventListener("click", async () => {
 
   isThinking = true;
   sendBtn.disabled = true;
+  summaryBtn.disabled = true;
 
   chatHistory.push({ role: "user", text: question });
   renderChat();
@@ -133,8 +142,54 @@ sendBtn.addEventListener("click", async () => {
 
   isThinking = false;
   sendBtn.disabled = false;
+  summaryBtn.disabled = false;
   renderChat();
 });
+
+
+//summary 
+summaryBtn.addEventListener("click", async () => {
+  if (isThinking || !currentYoutubeUrl) return;
+
+  isThinking = true;
+  sendBtn.disabled = true;
+  summaryBtn.disabled = true;
+
+  chatHistory.push({
+    role: "user",
+    text: "Summarize this video"
+  });
+  renderChat();
+
+  const thinkingIndex = chatHistory.push({
+    role: "bot",
+    text: "Thinking..."
+  }) - 1;
+  renderChat();
+
+  try {
+    const res = await fetch("http://localhost:8000/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        youtube_url: currentYoutubeUrl,
+        question: "__SUMMARY__"
+      })
+    });
+
+    const data = await res.json();
+    chatHistory[thinkingIndex].text = data.answer;
+
+  } catch (err) {
+    chatHistory[thinkingIndex].text = "Error generating summary";
+  }
+
+  isThinking = false;
+  sendBtn.disabled = false;
+  summaryBtn.disabled = false;
+  renderChat();
+});
+
 
 // Enter key support
 questionInput.addEventListener("keydown", (e) => {

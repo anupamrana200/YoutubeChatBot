@@ -35,20 +35,20 @@ llm = ChatOpenAI(
 
 prompt = PromptTemplate(
     template="""
-You are a helpful assistant.
+        You are a helpful assistant.
 
-First, try to answer using the transcript of the youtube video/podcast.
-If the transcript does NOT contain enough information:
-- Clearly say: "The following answer is not based on the transcript. I do not have sufficient information from the transcript. So the following answer is based on my general knowledge."
-- Then answer the question using your general knowledge.
-- Before this try very hard to find the answer in the transcript.
+        First, try to answer using the transcript of the youtube video/podcast.
+        If the transcript does NOT contain enough information:
+        - Clearly say: "The following answer is not based on the transcript. I do not have sufficient information from the transcript. So the following answer is based on my general knowledge."
+        - Then answer the question using your general knowledge.
+        - Before this try very hard to find the answer in the transcript.
 
-Context:
-{context}
+        Context:
+        {context}
 
-Question:
-{question}
-""",
+        Question:
+        {question}
+    """,
     input_variables=["context", "question"]
 )
 
@@ -83,6 +83,31 @@ def answer_from_youtube(youtube_url: str, question: str):
         transcript = " ".join(item.text for item in transcript_list)
     except TranscriptsDisabled:
         raise ValueError("No caption available for this video")
+    
+
+    # SUMMARY MODE
+    if question == "__SUMMARY__":
+        summary_prompt = f"""
+            You are a helpful assistant.
+
+            Summarize the following YouTube video transcript very clearly and concisely.
+            Cover the main topics, key ideas, and important points.
+            Do NOT add external information.
+
+            Transcript:
+            {transcript}
+        """
+
+        summary = llm.invoke(summary_prompt)
+
+        return {
+            "video_id": video_id,
+            "question": "Summarize this video",
+            "answer": summary.content
+        }
+
+
+
 
     # 2. Split transcript
     splitter = RecursiveCharacterTextSplitter(
