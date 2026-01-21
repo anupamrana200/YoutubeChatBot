@@ -5,6 +5,7 @@ from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from pinecone import Pinecone, ServerlessSpec
 from langchain_pinecone import PineconeVectorStore
+from langchain_core.documents import Document
 from urllib.parse import urlparse, parse_qs
 
 
@@ -35,19 +36,22 @@ llm = ChatOpenAI(
 
 prompt = PromptTemplate(
     template="""
-        You are a helpful assistant.
+    You are a helpful assistant.
 
-        First, try to answer using the transcript of the youtube video/podcast.
-        If the transcript does NOT contain enough information:
-        - Clearly say: "The following answer is not based on the transcript. I do not have sufficient information from the transcript. So the following answer is based on my general knowledge."
-        - Then answer the question using your general knowledge.
-        - Before this try very hard to find the answer in the transcript.
+    Answer the question using the transcript context below.
 
-        Context:
-        {context}
+    If the answer is based on the transcript:
+    - Mention the relevant timestamp(s).
 
-        Question:
-        {question}
+    If the transcript does NOT contain enough information:
+    - Do NOT include timestamps.
+    - Say clearly: "This answer is not based on the video transcript." after writing this answer using general knowledge.
+
+    Context:
+    {context}
+
+    Question:
+    {question}
     """,
     input_variables=["context", "question"]
 )
@@ -66,6 +70,11 @@ if index_name not in pc.list_indexes().names():
         )
     )
 
+def format_timestamp(seconds: float) -> str:
+    minutes = int(seconds // 60)
+    secs = int(seconds % 60)
+    return f"{minutes}:{secs:02d}"
+
 
 # -----------------------
 # Core RAG function
@@ -80,22 +89,54 @@ def answer_from_youtube(youtube_url: str, question: str):
     try:
         api = YouTubeTranscriptApi()
         transcript_list = api.fetch(video_id, languages=["en"])
-        transcript = " ".join(item.text for item in transcript_list)
+        #transcript = " ".join(item.text for item in transcript_list)
+        documents = []
+        for item in transcript_list:
+            documents.append(
+                Document(
+                    page_content=item.text,
+                    metadata={
+                        "start": item.start,
+                        "duration": item.duration
+                    }
+                )
+            )
     except TranscriptsDisabled:
         raise ValueError("No caption available for this video")
     
 
     # SUMMARY MODE
     if question == "__SUMMARY__":
+
+        summary_blocks = []
+
+        for doc in documents:
+            start = doc.metadata.get("start")
+            duration = doc.metadata.get("duration")
+            end = start + duration
+
+            start_ts = format_timestamp(start)
+            end_ts = format_timestamp(end)
+
+            summary_blocks.append(
+                f"[{start_ts} – {end_ts}] {doc.page_content}"
+            )
+
+        summary_context = "\n".join(summary_blocks)
+
         summary_prompt = f"""
             You are a helpful assistant.
 
-            Summarize the following YouTube video transcript very clearly and concisely.
-            Cover the main topics, key ideas, and important points.
-            Do NOT add external information.
+            Summarize the following YouTube video transcript clearly and concisely.
+
+            Rules:
+            - Use ONLY the provided transcript.
+            - Do NOT add external information.
+            - Organize the summary by main topics.
+            - Include relevant timestamps in the summary where helpful.
 
             Transcript:
-            {transcript}
+            {summary_context}
         """
 
         summary = llm.invoke(summary_prompt)
@@ -109,12 +150,13 @@ def answer_from_youtube(youtube_url: str, question: str):
 
 
 
+
     # 2. Split transcript
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200
-    )
-    chunks = splitter.create_documents([transcript])
+    # splitter = RecursiveCharacterTextSplitter(
+    #     chunk_size=1000,
+    #     chunk_overlap=200
+    # )
+    # chunks = splitter.create_documents([transcript])
 
     # 3. Pinecone ingestion guard (CRITICAL FIX)
     index = pc.Index(index_name)
@@ -122,11 +164,12 @@ def answer_from_youtube(youtube_url: str, question: str):
 
     if video_id not in stats.get("namespaces", {}):
         PineconeVectorStore.from_documents(
-            documents=chunks,
+            documents=documents,
             embedding=embeddings,
             index_name=index_name,
             namespace=video_id
         )
+
 
     # 4. Vector store (retrieval only)
     vector_store = PineconeVectorStore(
@@ -142,7 +185,24 @@ def answer_from_youtube(youtube_url: str, question: str):
 
     # 5. Retrieval
     docs = retriever.invoke(question)
-    context_text = "\n\n".join(doc.page_content for doc in docs)
+    # context_text = "\n\n".join(doc.page_content for doc in docs)
+
+    context_blocks = []
+
+    for doc in docs:
+        start = doc.metadata.get("start")
+        duration = doc.metadata.get("duration")
+        end = start + duration
+
+        start_ts = format_timestamp(start)
+        end_ts = format_timestamp(end)
+
+        context_blocks.append(
+            f"[{start_ts} - {end_ts}] {doc.page_content}"
+        )
+
+    context_text = "\n".join(context_blocks)
+
 
     final_prompt = prompt.invoke({
         "context": context_text,
