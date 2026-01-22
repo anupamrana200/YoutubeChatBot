@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+python-dotenv
+youtube-transcript-api
+langchain
+langchain-openai
+langchain-pinecone
+langchain-text-splitters
+pinecone-client
+openai
+langdetect
