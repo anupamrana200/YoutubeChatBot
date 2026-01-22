@@ -11,6 +11,39 @@ let currentYoutubeUrl = null;
 let chatHistory = [];
 let isThinking = false;
 
+//This function helps to store chat on the localstorage by extracting videoID but not reliable to send this id to the backend.
+function extractVideoId(youtubeUrl) {
+  try {
+    const url = new URL(youtubeUrl);
+
+    if (url.hostname.includes("youtube.com")) {
+      return url.searchParams.get("v");
+    }
+
+    if (url.hostname === "youtu.be") {
+      return url.pathname.slice(1);
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function saveChat() {
+  if (!currentYoutubeUrl) return;
+
+  const videoId = extractVideoId(currentYoutubeUrl);
+  if (!videoId) return;
+
+  localStorage.setItem(
+    `chat_${videoId}`,
+    JSON.stringify(chatHistory)
+  );
+}
+
+
+
 
 // Theme management
 function initTheme() {
@@ -39,7 +72,7 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
   const url = tabs[0].url || "";
 
   if (!url.includes("youtube.com/watch")) {
-    infoMessage.textContent = "This plugin works only on YouTube.";
+    infoMessage.textContent = "This plugin works only on YouTube Video.";
     disableInput();
     return;
   }
@@ -48,11 +81,23 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     tabs[0].id,
     { type: "GET_YOUTUBE_URL" },
     (response) => {
+      // if (response && response.url) {
+      //     currentYoutubeUrl = response.url;
+      //     chatHistory = [];
+      //     renderChat();
+      //     infoMessage.textContent = "";
+      // }
+
       if (response && response.url) {
-          currentYoutubeUrl = response.url;
-          chatHistory = [];
-          renderChat();
-          infoMessage.textContent = "";
+        currentYoutubeUrl = response.url;
+
+        const videoId = extractVideoId(currentYoutubeUrl);
+        const savedChat = localStorage.getItem(`chat_${videoId}`);
+
+        chatHistory = savedChat ? JSON.parse(savedChat) : [];
+
+        renderChat();
+        infoMessage.textContent = "";
       }
 
     }
@@ -114,6 +159,7 @@ sendBtn.addEventListener("click", async () => {
   summaryBtn.disabled = true;
 
   chatHistory.push({ role: "user", text: question });
+  saveChat();
   renderChat();
   questionInput.value = "";
 
@@ -129,12 +175,19 @@ sendBtn.addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         youtube_url: currentYoutubeUrl,
-        question: question
+        question: question,
+        chat_history: chatHistory.slice(-6)
       })
     });
 
     const data = await res.json();
-    chatHistory[thinkingIndex].text = data.answer || "No answer received";
+    if (data.status === "NO_ENGLISH_TRANSCRIPT") {
+        chatHistory[thinkingIndex].text = data.message;
+    } else {
+        chatHistory[thinkingIndex].text = data.answer || "No answer received";
+    }
+
+    saveChat();
 
   } catch (err) {
     chatHistory[thinkingIndex].text = "Error connecting to backend";
@@ -178,7 +231,13 @@ summaryBtn.addEventListener("click", async () => {
     });
 
     const data = await res.json();
-    chatHistory[thinkingIndex].text = data.answer;
+    if (data.status === "NO_ENGLISH_TRANSCRIPT") {
+      chatHistory[thinkingIndex].text = data.message;
+    } else {
+      chatHistory[thinkingIndex].text = data.answer;
+    }
+
+    saveChat();
 
   } catch (err) {
     chatHistory[thinkingIndex].text = "Error generating summary";

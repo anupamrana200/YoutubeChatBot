@@ -1,5 +1,5 @@
 import os
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
+from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_core.prompts import PromptTemplate
@@ -23,6 +23,26 @@ def extract_video_id(youtube_url: str):
 
     return None
 
+#Find the summary intent, if the user needs to summarize the video without clicking on the summarize button.
+SUMMARY_INTENTS = [
+    "summarize",
+    "summary",
+    "summarise",
+    "give me a summary",
+    "summarize the video",
+    "summarise the video",
+    "explain the video briefly",
+    "short summary",
+    "video summary",
+    "I want to summarize the video",
+    "Please provide me summarize version of the video"
+]
+
+def is_summary_intent(question: str) -> bool:
+    q = question.lower().strip()
+    return any(intent in q for intent in SUMMARY_INTENTS)
+
+
 
 # -----------------------
 # One-time setup
@@ -36,7 +56,7 @@ llm = ChatOpenAI(
 
 prompt = PromptTemplate(
     template="""
-    You are a helpful assistant.
+    You are a helpful assistant. Who is able to read the youtube transcript and answer the questions of the user.
 
     Answer the question using the transcript context below.
 
@@ -45,7 +65,7 @@ prompt = PromptTemplate(
 
     If the transcript does NOT contain enough information:
     - Do NOT include timestamps.
-    - Say clearly: "This answer is not based on the video transcript." after writing this answer using general knowledge.
+    - Answer using general knowledge.
 
     Context:
     {context}
@@ -75,11 +95,27 @@ def format_timestamp(seconds: float) -> str:
     secs = int(seconds % 60)
     return f"{minutes}:{secs:02d}"
 
+def format_chat_history(chat_history):
+    if not chat_history:
+        return ""
+
+    lines = []
+    for msg in chat_history:
+        role = "User" if msg["role"] == "user" else "Assistant"
+        lines.append(f"{role}: {msg['text']}")
+
+    return "\n".join(lines)
+
 
 # -----------------------
 # Core RAG function
 # -----------------------
-def answer_from_youtube(youtube_url: str, question: str):
+
+def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
+
+    # Normalize summary intent
+    if is_summary_intent(question):
+        question = "__SUMMARY__"
 
     video_id = extract_video_id(youtube_url)
     if not video_id:
@@ -89,7 +125,7 @@ def answer_from_youtube(youtube_url: str, question: str):
     try:
         api = YouTubeTranscriptApi()
         transcript_list = api.fetch(video_id, languages=["en"])
-        #transcript = " ".join(item.text for item in transcript_list)
+
         documents = []
         for item in transcript_list:
             documents.append(
@@ -101,8 +137,19 @@ def answer_from_youtube(youtube_url: str, question: str):
                     }
                 )
             )
-    except TranscriptsDisabled:
-        raise ValueError("No caption available for this video")
+
+        if not documents:
+            raise ValueError("Empty transcript")
+
+    except (TranscriptsDisabled, NoTranscriptFound):
+        return {
+            "status": "NO_ENGLISH_TRANSCRIPT",
+            "message": (
+                "This video does not have an English transcript. "
+                "Please play a video which has english transcript, then ask me questions."
+            )
+        }
+
     
 
     # SUMMARY MODE
@@ -204,10 +251,20 @@ def answer_from_youtube(youtube_url: str, question: str):
     context_text = "\n".join(context_blocks)
 
 
-    final_prompt = prompt.invoke({
-        "context": context_text,
-        "question": question
-    })
+    conversation_context = format_chat_history(chat_history)
+
+    final_prompt = f"""
+        You are a helpful assistant answering questions about a YouTube video.
+
+        Conversation so far:
+        {conversation_context}
+
+        Relevant transcript context:
+        {context_text}
+
+        Now answer the user's latest question:
+        {question}
+    """
 
     answer = llm.invoke(final_prompt)
 
