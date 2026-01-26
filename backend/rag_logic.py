@@ -9,7 +9,7 @@ from langchain_core.documents import Document
 from urllib.parse import urlparse, parse_qs
 
 
-# -----------------------
+
 # Extract video ID
 # -----------------------
 def extract_video_id(youtube_url: str):
@@ -44,7 +44,6 @@ def is_summary_intent(question: str) -> bool:
 
 
 
-# -----------------------
 # One-time setup
 # -----------------------
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
@@ -52,28 +51,6 @@ embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 llm = ChatOpenAI(
     model="gpt-4o-mini",
     temperature=0
-)
-
-prompt = PromptTemplate(
-    template="""
-    You are a helpful assistant. Who is able to read the youtube transcript and answer the questions of the user.
-
-    Answer the question using the transcript context below.
-
-    If the answer is based on the transcript:
-    - Mention the relevant timestamp(s).
-
-    If the transcript does NOT contain enough information:
-    - Do NOT include timestamps.
-    - Answer using general knowledge.
-
-    Context:
-    {context}
-
-    Question:
-    {question}
-    """,
-    input_variables=["context", "question"]
 )
 
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
@@ -107,7 +84,7 @@ def format_chat_history(chat_history):
     return "\n".join(lines)
 
 
-# -----------------------
+
 # Core RAG function
 # -----------------------
 
@@ -121,7 +98,7 @@ def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
     if not video_id:
         raise ValueError("Invalid YouTube URL")
 
-    # 1. Fetch transcript
+    # Fetch transcript
     try:
         api = YouTubeTranscriptApi()
         transcript_list = api.fetch(video_id, languages=["en"])
@@ -198,14 +175,14 @@ def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
 
 
 
-    # 2. Split transcript
+    # Split transcript
     # splitter = RecursiveCharacterTextSplitter(
     #     chunk_size=1000,
     #     chunk_overlap=200
     # )
     # chunks = splitter.create_documents([transcript])
 
-    # 3. Pinecone ingestion guard (CRITICAL FIX)
+    # Pinecone ingestion guard (CRITICAL FIX)
     index = pc.Index(index_name)
     stats = index.describe_index_stats()
 
@@ -218,7 +195,7 @@ def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
         )
 
 
-    # 4. Vector store (retrieval only)
+    # Vector store (retrieval only)
     vector_store = PineconeVectorStore(
         index_name=index_name,
         embedding=embeddings,
@@ -254,15 +231,25 @@ def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
     conversation_context = format_chat_history(chat_history)
 
     final_prompt = f"""
-        You are a helpful assistant answering questions about a YouTube video.
+        You are a helpful assistant. Who is able to read the youtube transcript and answer the questions of the user.
 
-        Conversation so far:
+        Answer the question using the transcript and the conversation done so far below.
+
+        Rules: 
+        If the answer is based on the transcript:
+        - Mention the relevant timestamp(s).
+
+        If the transcript does NOT contain enough information:
+        - Do NOT include timestamps.
+        - Answer using general knowledge.
+
+        conversation so far: 
         {conversation_context}
 
-        Relevant transcript context:
+        Context:
         {context_text}
 
-        Now answer the user's latest question:
+        Question:
         {question}
     """
 

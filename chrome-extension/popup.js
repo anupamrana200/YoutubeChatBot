@@ -170,7 +170,7 @@ sendBtn.addEventListener("click", async () => {
   renderChat();
 
   try {
-    const res = await fetch("https://youtube-chatbot-backend-j2wf.onrender.com/ask", {
+    const res = await fetch("http://localhost:8000/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -221,7 +221,7 @@ summaryBtn.addEventListener("click", async () => {
   renderChat();
 
   try {
-    const res = await fetch("https://youtube-chatbot-backend-j2wf.onrender.com/ask", {
+    const res = await fetch("http://localhost:8000/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

@@ -31,8 +31,8 @@ def ask_question(req: QueryRequest):
             question=req.question,
             chat_history=req.chat_history
         )
-        if isinstance(result, dict) and result.get("status"):
-            return result
+        # if isinstance(result, dict) and result.get("status"):
+        #     return result
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
