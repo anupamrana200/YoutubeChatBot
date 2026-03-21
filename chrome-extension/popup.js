@@ -73,6 +73,7 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
 
   if (!url.includes("youtube.com/watch")) {
     infoMessage.textContent = "This plugin works only on YouTube Video.";
+    infoMessage.style.display = "block";
     disableInput();
     return;
   }
@@ -81,13 +82,6 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     tabs[0].id,
     { type: "GET_YOUTUBE_URL" },
     (response) => {
-      // if (response && response.url) {
-      //     currentYoutubeUrl = response.url;
-      //     chatHistory = [];
-      //     renderChat();
-      //     infoMessage.textContent = "";
-      // }
-
       if (response && response.url) {
         currentYoutubeUrl = response.url;
 
@@ -97,9 +91,11 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         chatHistory = savedChat ? JSON.parse(savedChat) : [];
 
         renderChat();
-        infoMessage.textContent = "";
-      }
 
+        // Hide the red strip entirely when on a valid YouTube video
+        infoMessage.textContent = "";
+        infoMessage.style.display = "none";
+      }
     }
   );
 });
@@ -121,7 +117,6 @@ function updateEmptyState() {
     }
   }
 }
-
 // Render chat
 function renderChat() {
   // Remove all messages but keep empty state
@@ -198,7 +193,6 @@ sendBtn.addEventListener("click", async () => {
   summaryBtn.disabled = false;
   renderChat();
 });
-
 
 //summary 
 summaryBtn.addEventListener("click", async () => {

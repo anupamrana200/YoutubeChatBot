@@ -124,7 +124,6 @@ body {
 .sun-icon {
   display: block;
 }
-
 .moon-icon {
   display: none;
 }
@@ -137,8 +136,9 @@ body {
   display: block;
 }
 
-/* Info Message */
+/* Info Message — hidden by default, shown only when needed */
 .info {
+  display: none;
   font-size: 13px;
   color: #ef4444;
   padding: 12px 20px;
@@ -239,7 +239,6 @@ body {
   box-shadow: var(--shadow-sm);
   position: relative;
 }
-
 .message.user {
   background: var(--user-msg);
   color: white;
@@ -379,7 +378,6 @@ input::placeholder {
     transform: scale(1);
   }
 }
-
 @keyframes slideDown {
   from {
     transform: translateY(-100%);

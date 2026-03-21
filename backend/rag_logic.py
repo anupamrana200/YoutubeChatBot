@@ -84,7 +84,6 @@ def format_chat_history(chat_history):
     return "\n".join(lines)
 
 
-
 # Core RAG function
 # -----------------------
 
@@ -126,8 +125,6 @@ def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
                 "Please play a video which has english transcript, then ask me questions."
             )
         }
-
-    
 
     # SUMMARY MODE
     if question == "__SUMMARY__":
@@ -171,17 +168,6 @@ def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
             "answer": summary.content
         }
 
-
-
-
-
-    # Split transcript
-    # splitter = RecursiveCharacterTextSplitter(
-    #     chunk_size=1000,
-    #     chunk_overlap=200
-    # )
-    # chunks = splitter.create_documents([transcript])
-
     # Pinecone ingestion guard (CRITICAL FIX)
     index = pc.Index(index_name)
     stats = index.describe_index_stats()
@@ -193,7 +179,6 @@ def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
             index_name=index_name,
             namespace=video_id
         )
-
 
     # Vector store (retrieval only)
     vector_store = PineconeVectorStore(
@@ -207,9 +192,8 @@ def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
         search_kwargs={"k": 4}
     )
 
-    # 5. Retrieval
+    # Retrieval
     docs = retriever.invoke(question)
-    # context_text = "\n\n".join(doc.page_content for doc in docs)
 
     context_blocks = []
 
@@ -226,7 +210,6 @@ def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
         )
 
     context_text = "\n".join(context_blocks)
-
 
     conversation_context = format_chat_history(chat_history)
 
