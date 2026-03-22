@@ -288,7 +288,7 @@ sendBtn.addEventListener("click", async () => {
   renderChat();
 
   try {
-    const res  = await fetch("http://localhost:8000/ask", {
+    const res  = await fetch("https://youtube-chatbot-backend-xbub.onrender.com/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -333,7 +333,7 @@ summaryBtn.addEventListener("click", async () => {
   renderChat();
 
   try {
-    const res  = await fetch("http://localhost:8000/ask", {
+    const res  = await fetch("https://youtube-chatbot-backend-xbub.onrender.com/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
