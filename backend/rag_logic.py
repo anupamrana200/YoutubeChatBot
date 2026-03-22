@@ -9,7 +9,6 @@ from langchain_core.documents import Document
 from urllib.parse import urlparse, parse_qs
 
 
-
 # Extract video ID
 # -----------------------
 def extract_video_id(youtube_url: str):
@@ -23,7 +22,8 @@ def extract_video_id(youtube_url: str):
 
     return None
 
-#Find the summary intent, if the user needs to summarize the video without clicking on the summarize button.
+
+# Find the summary intent
 SUMMARY_INTENTS = [
     "summarize",
     "summary",
@@ -41,7 +41,6 @@ SUMMARY_INTENTS = [
 def is_summary_intent(question: str) -> bool:
     q = question.lower().strip()
     return any(intent in q for intent in SUMMARY_INTENTS)
-
 
 
 # One-time setup
@@ -75,18 +74,15 @@ def format_timestamp(seconds: float) -> str:
 def format_chat_history(chat_history):
     if not chat_history:
         return ""
-
     lines = []
     for msg in chat_history:
         role = "User" if msg["role"] == "user" else "Assistant"
         lines.append(f"{role}: {msg['text']}")
-
     return "\n".join(lines)
 
 
 # Core RAG function
 # -----------------------
-
 def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
 
     # Normalize summary intent
@@ -97,19 +93,18 @@ def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
     if not video_id:
         raise ValueError("Invalid YouTube URL")
 
-    # Fetch transcript
+    # Fetch transcript — compatible with youtube-transcript-api 1.2.x
     try:
-        api = YouTubeTranscriptApi()
-        transcript_list = api.fetch(video_id, languages=["en"])
+        transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=["en"])
 
         documents = []
         for item in transcript_list:
             documents.append(
                 Document(
-                    page_content=item.text,
+                    page_content=item["text"],
                     metadata={
-                        "start": item.start,
-                        "duration": item.duration
+                        "start": item["start"],
+                        "duration": item["duration"]
                     }
                 )
             )
@@ -122,7 +117,7 @@ def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
             "status": "NO_ENGLISH_TRANSCRIPT",
             "message": (
                 "This video does not have an English transcript. "
-                "Please play a video which has english transcript, then ask me questions."
+                "Please play a video which has an English transcript, then ask me questions."
             )
         }
 
@@ -130,18 +125,13 @@ def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
     if question == "__SUMMARY__":
 
         summary_blocks = []
-
         for doc in documents:
             start = doc.metadata.get("start")
             duration = doc.metadata.get("duration")
             end = start + duration
-
             start_ts = format_timestamp(start)
             end_ts = format_timestamp(end)
-
-            summary_blocks.append(
-                f"[{start_ts} – {end_ts}] {doc.page_content}"
-            )
+            summary_blocks.append(f"[{start_ts} – {end_ts}] {doc.page_content}")
 
         summary_context = "\n".join(summary_blocks)
 
@@ -168,7 +158,7 @@ def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
             "answer": summary.content
         }
 
-    # Pinecone ingestion guard (CRITICAL FIX)
+    # Pinecone ingestion guard
     index = pc.Index(index_name)
     stats = index.describe_index_stats()
 
@@ -196,29 +186,23 @@ def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
     docs = retriever.invoke(question)
 
     context_blocks = []
-
     for doc in docs:
         start = doc.metadata.get("start")
         duration = doc.metadata.get("duration")
         end = start + duration
-
         start_ts = format_timestamp(start)
         end_ts = format_timestamp(end)
-
-        context_blocks.append(
-            f"[{start_ts} - {end_ts}] {doc.page_content}"
-        )
+        context_blocks.append(f"[{start_ts} - {end_ts}] {doc.page_content}")
 
     context_text = "\n".join(context_blocks)
-
     conversation_context = format_chat_history(chat_history)
 
     final_prompt = f"""
-        You are a helpful assistant. Who is able to read the youtube transcript and answer the questions of the user.
+        You are a helpful assistant who can read YouTube transcripts and answer questions.
 
         Answer the question using the transcript and the conversation done so far below.
 
-        Rules: 
+        Rules:
         If the answer is based on the transcript:
         - Mention the relevant timestamp(s).
 
@@ -226,7 +210,7 @@ def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
         - Do NOT include timestamps.
         - Answer using general knowledge.
 
-        conversation so far: 
+        Conversation so far:
         {conversation_context}
 
         Context:
