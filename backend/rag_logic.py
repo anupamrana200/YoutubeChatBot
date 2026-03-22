@@ -88,18 +88,19 @@ def answer_from_youtube(youtube_url: str, question: str, chat_history=None):
     if not video_id:
         raise ValueError("Invalid YouTube URL")
 
-    # Fetch transcript
+    # Fetch transcript — youtube-transcript-api 1.2.x uses instance method
     try:
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=["en"])
+        ytt_api = YouTubeTranscriptApi()
+        transcript = ytt_api.fetch(video_id, languages=["en"])
 
         documents = []
-        for item in transcript_list:
+        for snippet in transcript:
             documents.append(
                 Document(
-                    page_content=item["text"],
+                    page_content=snippet.text,
                     metadata={
-                        "start":    item["start"],
-                        "duration": item["duration"]
+                        "start":    snippet.start,
+                        "duration": snippet.duration
                     }
                 )
             )
@@ -150,8 +151,8 @@ Transcript:
         }
 
     # ── Pinecone ingestion guard
-    index = pc.Index(index_name)
-    stats = index.describe_index_stats()
+    index      = pc.Index(index_name)
+    stats      = index.describe_index_stats()
     namespaces = stats.get("namespaces", {})
 
     if video_id not in namespaces:
