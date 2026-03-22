@@ -7,6 +7,8 @@ const infoMessage    = document.getElementById("info-message");
 const summaryBtn     = document.getElementById("summaryBtn");
 const scrollBtn      = document.getElementById("scrollBtn");
 
+const BACKEND_URL = "https://youtube-chatbot-backend-xbub.onrender.com";
+
 let currentYoutubeUrl = null;
 let chatHistory       = [];
 let isThinking        = false;
@@ -14,13 +16,15 @@ let isThinking        = false;
 // ─── Built-in Markdown parser ─────────────────────────────────────────────────
 
 function parseMarkdown(text) {
-  // Step 1 — escape raw HTML
+  // Safety guard — if text is not a string, return empty string
+  if (typeof text !== "string") return "";
+
+  // Escape raw HTML
   let escaped = text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  // Step 2 — process line by line, grouping list blocks
   const lines  = escaped.split("\n");
   const output = [];
   let i = 0;
@@ -28,33 +32,33 @@ function parseMarkdown(text) {
   while (i < lines.length) {
     const line = lines[i];
 
-    // ── Headings
+    // Headings
     if (/^### (.+)/.test(line)) {
-      output.push(`<h3>${line.replace(/^### /, "")}</h3>`);
+      output.push(`<h3>${inlineFormat(line.replace(/^### /, ""))}</h3>`);
       i++; continue;
     }
     if (/^## (.+)/.test(line)) {
-      output.push(`<h2>${line.replace(/^## /, "")}</h2>`);
+      output.push(`<h2>${inlineFormat(line.replace(/^## /, ""))}</h2>`);
       i++; continue;
     }
     if (/^# (.+)/.test(line)) {
-      output.push(`<h1>${line.replace(/^# /, "")}</h1>`);
+      output.push(`<h1>${inlineFormat(line.replace(/^# /, ""))}</h1>`);
       i++; continue;
     }
 
-    // ── Blockquote
+    // Blockquote
     if (/^&gt; (.+)/.test(line)) {
-      output.push(`<blockquote>${line.replace(/^&gt; /, "")}</blockquote>`);
+      output.push(`<blockquote>${inlineFormat(line.replace(/^&gt; /, ""))}</blockquote>`);
       i++; continue;
     }
 
-    // ── Horizontal rule
+    // Horizontal rule
     if (/^(\-{3,}|\*{3,})$/.test(line.trim())) {
       output.push("<hr>");
       i++; continue;
     }
 
-    // ── Unordered list — collect all consecutive bullet lines
+    // Unordered list — collect all consecutive bullet lines
     if (/^[\*\-] /.test(line)) {
       const items = [];
       while (i < lines.length && /^[\*\-] /.test(lines[i])) {
@@ -65,25 +69,24 @@ function parseMarkdown(text) {
       continue;
     }
 
-    // ── Ordered list — collect all consecutive numbered lines, renumber them
+    // Ordered list — collect all consecutive numbered lines
     if (/^\d+\. /.test(line)) {
       const items = [];
       while (i < lines.length && /^\d+\. /.test(lines[i])) {
         items.push(`<li>${inlineFormat(lines[i].replace(/^\d+\. /, ""))}</li>`);
         i++;
       }
-      // Use <ol> — browser handles sequential numbering (1, 2, 3...)
       output.push(`<ol>${items.join("")}</ol>`);
       continue;
     }
 
-    // ── Blank line — paragraph break
+    // Blank line
     if (line.trim() === "") {
       output.push("<br>");
       i++; continue;
     }
 
-    // ── Regular paragraph line
+    // Regular paragraph line
     output.push(`<p>${inlineFormat(line)}</p>`);
     i++;
   }
@@ -91,22 +94,18 @@ function parseMarkdown(text) {
   return output.join("\n");
 }
 
-// Applies inline formatting: bold, italic, inline code
 function inlineFormat(text) {
-  // Bold: **text** or __text__
+  if (typeof text !== "string") return "";
   text = text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   text = text.replace(/__(.+?)__/g,     "<strong>$1</strong>");
-  // Italic: *text* or _text_  (but not inside words)
-  text = text.replace(/\*(.+?)\*/g, "<em>$1</em>");
+  text = text.replace(/\*(.+?)\*/g,     "<em>$1</em>");
   text = text.replace(/(?<![a-zA-Z])_(.+?)_(?![a-zA-Z])/g, "<em>$1</em>");
-  // Inline code: `code`
-  text = text.replace(/`([^`]+)`/g, "<code>$1</code>");
+  text = text.replace(/`([^`]+)`/g,     "<code>$1</code>");
   return text;
 }
 
-// ─── Timestamp chip highlighter ───────────────────────────────────────────────
-
 function highlightTimestamps(html) {
+  if (typeof html !== "string") return "";
   return html.replace(
     /\[(\d{1,2}:\d{2}(?:\s*[–\-]\s*\d{1,2}:\d{2})?)\]/g,
     '<span class="ts-chip">[$1]</span>'
@@ -114,7 +113,26 @@ function highlightTimestamps(html) {
 }
 
 function renderMarkdown(text) {
+  if (typeof text !== "string" || text.trim() === "") return "";
   return highlightTimestamps(parseMarkdown(text));
+}
+
+// ─── Extract answer safely from any response shape ───────────────────────────
+
+function extractAnswer(data) {
+  if (!data) return "No response received";
+
+  // Handle NO_ENGLISH_TRANSCRIPT status
+  if (data.status === "NO_ENGLISH_TRANSCRIPT") return data.message || "No English transcript available";
+
+  // Try common response fields
+  if (typeof data.answer === "string" && data.answer.trim()) return data.answer;
+  if (typeof data.result === "string" && data.result.trim()) return data.result;
+  if (typeof data.message === "string" && data.message.trim()) return data.message;
+  if (typeof data.text === "string" && data.text.trim()) return data.text;
+
+  // Last resort — stringify the whole response for debugging
+  return JSON.stringify(data);
 }
 
 // ─── Other helpers ────────────────────────────────────────────────────────────
@@ -288,7 +306,7 @@ sendBtn.addEventListener("click", async () => {
   renderChat();
 
   try {
-    const res  = await fetch("https://youtube-chatbot-backend-xbub.onrender.com/ask", {
+    const res  = await fetch(`${BACKEND_URL}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -299,14 +317,12 @@ sendBtn.addEventListener("click", async () => {
     });
 
     const data = await res.json();
-    chatHistory[thinkingIndex].text =
-      data.status === "NO_ENGLISH_TRANSCRIPT"
-        ? data.message
-        : data.answer || "No answer received";
-    chatHistory[thinkingIndex].ts = Date.now();
+    chatHistory[thinkingIndex].text = extractAnswer(data);
+    chatHistory[thinkingIndex].ts   = Date.now();
     saveChat();
 
-  } catch {
+  } catch (err) {
+    console.error("Error handling response:", err);
     chatHistory[thinkingIndex].text = "Error connecting to backend";
     chatHistory[thinkingIndex].ts   = Date.now();
   }
@@ -333,7 +349,7 @@ summaryBtn.addEventListener("click", async () => {
   renderChat();
 
   try {
-    const res  = await fetch("https://youtube-chatbot-backend-xbub.onrender.com/ask", {
+    const res  = await fetch(`${BACKEND_URL}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -343,12 +359,12 @@ summaryBtn.addEventListener("click", async () => {
     });
 
     const data = await res.json();
-    chatHistory[thinkingIndex].text =
-      data.status === "NO_ENGLISH_TRANSCRIPT" ? data.message : data.answer;
-    chatHistory[thinkingIndex].ts = Date.now();
+    chatHistory[thinkingIndex].text = extractAnswer(data);
+    chatHistory[thinkingIndex].ts   = Date.now();
     saveChat();
 
-  } catch {
+  } catch (err) {
+    console.error("Error handling response:", err);
     chatHistory[thinkingIndex].text = "Error generating summary";
     chatHistory[thinkingIndex].ts   = Date.now();
   }
