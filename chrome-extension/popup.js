@@ -16,7 +16,6 @@ let isThinking        = false;
 // ─── Built-in Markdown parser ─────────────────────────────────────────────────
 
 function parseMarkdown(text) {
-  // Safety guard — if text is not a string, return empty string
   if (typeof text !== "string") return "";
 
   // Escape raw HTML
@@ -25,7 +24,16 @@ function parseMarkdown(text) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  const lines  = escaped.split("\n");
+  // Split into lines and process
+  const rawLines = escaped.split("\n");
+
+  // ── Pre-pass: merge numbered list items that may have blank lines between them
+  // This handles cases where LLM outputs "1.\n\n1." with gaps
+  const lines = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    lines.push(rawLines[i]);
+  }
+
   const output = [];
   let i = 0;
 
@@ -58,24 +66,43 @@ function parseMarkdown(text) {
       i++; continue;
     }
 
-    // Unordered list — collect all consecutive bullet lines
+    // ── Unordered list — greedily collect all consecutive bullet lines
+    // (skip blank lines between items to keep them in the same list)
     if (/^[\*\-] /.test(line)) {
       const items = [];
-      while (i < lines.length && /^[\*\-] /.test(lines[i])) {
-        items.push(`<li>${inlineFormat(lines[i].replace(/^[\*\-] /, ""))}</li>`);
-        i++;
+      while (i < lines.length) {
+        if (/^[\*\-] /.test(lines[i])) {
+          items.push(`<li>${inlineFormat(lines[i].replace(/^[\*\-] /, ""))}</li>`);
+          i++;
+        } else if (lines[i].trim() === "" && i + 1 < lines.length && /^[\*\-] /.test(lines[i + 1])) {
+          // Skip a single blank line between bullet items
+          i++;
+        } else {
+          break;
+        }
       }
       output.push(`<ul>${items.join("")}</ul>`);
       continue;
     }
 
-    // Ordered list — collect all consecutive numbered lines
-    if (/^\d+\. /.test(line)) {
+    // ── Ordered list — greedily collect ALL consecutive numbered lines
+    // into a SINGLE <ol> so browser auto-numbers them 1, 2, 3...
+    // Also skip single blank lines between items to keep them grouped
+    if (/^\d+[\.\)]\s+/.test(line)) {
       const items = [];
-      while (i < lines.length && /^\d+\. /.test(lines[i])) {
-        items.push(`<li>${inlineFormat(lines[i].replace(/^\d+\. /, ""))}</li>`);
-        i++;
+      while (i < lines.length) {
+        if (/^\d+[\.\)]\s+/.test(lines[i])) {
+          const content = lines[i].replace(/^\d+[\.\)]\s+/, "");
+          items.push(`<li>${inlineFormat(content)}</li>`);
+          i++;
+        } else if (lines[i].trim() === "" && i + 1 < lines.length && /^\d+[\.\)]\s+/.test(lines[i + 1])) {
+          // Skip a single blank line between numbered items
+          i++;
+        } else {
+          break;
+        }
       }
+      // Single <ol> wrapping all items — browser renders 1, 2, 3 automatically
       output.push(`<ol>${items.join("")}</ol>`);
       continue;
     }
@@ -86,13 +113,15 @@ function parseMarkdown(text) {
       i++; continue;
     }
 
-    // Regular paragraph line
+    // Regular paragraph
     output.push(`<p>${inlineFormat(line)}</p>`);
     i++;
   }
 
   return output.join("\n");
 }
+
+// ─── Inline formatting ────────────────────────────────────────────────────────
 
 function inlineFormat(text) {
   if (typeof text !== "string") return "";
@@ -103,6 +132,8 @@ function inlineFormat(text) {
   text = text.replace(/`([^`]+)`/g,     "<code>$1</code>");
   return text;
 }
+
+// ─── Timestamp chip highlighter ───────────────────────────────────────────────
 
 function highlightTimestamps(html) {
   if (typeof html !== "string") return "";
@@ -121,17 +152,11 @@ function renderMarkdown(text) {
 
 function extractAnswer(data) {
   if (!data) return "No response received";
-
-  // Handle NO_ENGLISH_TRANSCRIPT status
   if (data.status === "NO_ENGLISH_TRANSCRIPT") return data.message || "No English transcript available";
-
-  // Try common response fields
-  if (typeof data.answer === "string" && data.answer.trim()) return data.answer;
-  if (typeof data.result === "string" && data.result.trim()) return data.result;
+  if (typeof data.answer  === "string" && data.answer.trim())  return data.answer;
+  if (typeof data.result  === "string" && data.result.trim())  return data.result;
   if (typeof data.message === "string" && data.message.trim()) return data.message;
-  if (typeof data.text === "string" && data.text.trim()) return data.text;
-
-  // Last resort — stringify the whole response for debugging
+  if (typeof data.text    === "string" && data.text.trim())    return data.text;
   return JSON.stringify(data);
 }
 
@@ -306,7 +331,7 @@ sendBtn.addEventListener("click", async () => {
   renderChat();
 
   try {
-    const res  = await fetch(`${BACKEND_URL}/ask`, {
+    const res = await fetch(`${BACKEND_URL}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -322,7 +347,7 @@ sendBtn.addEventListener("click", async () => {
     saveChat();
 
   } catch (err) {
-    console.error("Error handling response:", err);
+    console.error("Error:", err);
     chatHistory[thinkingIndex].text = "Error connecting to backend";
     chatHistory[thinkingIndex].ts   = Date.now();
   }
@@ -349,7 +374,7 @@ summaryBtn.addEventListener("click", async () => {
   renderChat();
 
   try {
-    const res  = await fetch(`${BACKEND_URL}/ask`, {
+    const res = await fetch(`${BACKEND_URL}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -364,7 +389,7 @@ summaryBtn.addEventListener("click", async () => {
     saveChat();
 
   } catch (err) {
-    console.error("Error handling response:", err);
+    console.error("Error:", err);
     chatHistory[thinkingIndex].text = "Error generating summary";
     chatHistory[thinkingIndex].ts   = Date.now();
   }
